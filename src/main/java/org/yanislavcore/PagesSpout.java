@@ -1,6 +1,7 @@
 package org.yanislavcore;
 
 import com.digitalpebble.stormcrawler.Metadata;
+import org.apache.commons.lang3.tuple.Pair;
 import org.apache.storm.spout.SpoutOutputCollector;
 import org.apache.storm.task.TopologyContext;
 import org.apache.storm.topology.OutputFieldsDeclarer;
@@ -32,7 +33,7 @@ public class PagesSpout extends BaseRichSpout implements ActionListener<SearchRe
 
     private static final Logger LOG = LoggerFactory
             .getLogger(PagesSpout.class);
-    private final ConcurrentLinkedQueue<String> queue = new ConcurrentLinkedQueue<>();
+    private final ConcurrentLinkedQueue<Pair<String, String>> queue = new ConcurrentLinkedQueue<>();
     private transient RestHighLevelClient client;
     private int shardID = -1;
     private int maxDocsPerShard;
@@ -76,9 +77,11 @@ public class PagesSpout extends BaseRichSpout implements ActionListener<SearchRe
         SearchSourceBuilder sourceBuilder = new SearchSourceBuilder()
                 .fetchSource("url", null)
                 .query(queryBuilder)
-                .terminateAfter(maxDocsPerShard);
+                .terminateAfter(maxDocsPerShard)
+                .size(maxDocsPerShard);
 
-        request.source(sourceBuilder);
+        request.source(sourceBuilder)
+                .requestCache(false);
         if (shardID != -1) {
             request.preference("_shards:" + shardID);
         }
@@ -89,9 +92,12 @@ public class PagesSpout extends BaseRichSpout implements ActionListener<SearchRe
 
     @Override
     public void nextTuple() {
-        String next = queue.poll();
+        Pair<String, String> next = queue.poll();
         if (next != null) {
-            collector.emit(new Values(next, new Metadata(new HashMap<>())));
+            HashMap<String, String[]> meta = new HashMap<>();
+            meta.put("idUrl", new String[]{next.getRight()});
+            LOG.debug("Emitting url {}", next.getLeft());
+            collector.emit(new Values(next.getLeft(), new Metadata(meta)));
         } else {
             tryRequestNextBatch();
         }
@@ -105,15 +111,20 @@ public class PagesSpout extends BaseRichSpout implements ActionListener<SearchRe
     @Override
     public void onResponse(SearchResponse searchResponse) {
         try {
+            int found = 0;
             for (SearchHit hit : searchResponse.getHits()) {
                 URL buildUrl = tryBuildUrl((Map) hit.getSourceAsMap().get("url"));
                 if (buildUrl == null) {
                     continue;
                 }
-                String url = buildUrl.toString();
-                LOG.debug("Collecting url from db : {}", url);
-                queue.add(url);
+                //ID is limited to 512 bytes while real url could be longer
+                String realUrl = buildUrl.toString();
+                String idUrl = hit.getId();
+                LOG.debug("Collecting url from db : {}", realUrl);
+                queue.add(Pair.of(realUrl, idUrl));
+                found++;
             }
+            LOG.debug("Found {} urls", found);
         } finally {
             lastRequestTimestamp = 0;
         }
@@ -141,4 +152,5 @@ public class PagesSpout extends BaseRichSpout implements ActionListener<SearchRe
             lastRequestTimestamp = 0;
         }
     }
+
 }

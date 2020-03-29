@@ -43,31 +43,25 @@ public class CrawlTopology extends ConfigurableTopology {
         builder.setBolt("partitioner", new URLPartitionerBolt())
                 .shuffleGrouping("spout");
 
-        builder.setBolt("fetch", new FetcherBolt())
+        builder.setBolt("fetch", new FetcherBolt(), 100)
                 .fieldsGrouping("partitioner", new Fields("key"));
 
-        builder.setBolt("sitemap", new SiteMapParserBolt())
+        builder.setBolt("sitemap", new SiteMapParserBolt(), 10)
                 .localOrShuffleGrouping("fetch");
 
-        builder.setBolt("feeds", new FeedParserBolt())
+        builder.setBolt("feeds", new FeedParserBolt(), 10)
                 .localOrShuffleGrouping("sitemap");
 
-        builder.setBolt("parse", new JSoupParserBolt())
+        builder.setBolt("parse", new JSoupParserBolt(), 10)
                 .localOrShuffleGrouping("feeds");
 
+        Fields furl = new Fields("url");
         builder.setBolt("index", new EsIndexer())
-                .localOrShuffleGrouping("parse");
-
-
-//        Fields furl = new Fields("url");
-
-        // can also use MemoryStatusUpdater for simple recursive crawls
-//        builder.setBolt("status", new StdOutStatusUpdater())
-//                .fieldsGrouping("fetch", Constants.StatusStreamName, furl)
-//                .fieldsGrouping("sitemap", Constants.StatusStreamName, furl)
-//                .fieldsGrouping("feeds", Constants.StatusStreamName, furl)
-//                .fieldsGrouping("parse", Constants.StatusStreamName, furl)
-//                .fieldsGrouping("index", Constants.StatusStreamName, furl);
+                .localOrShuffleGrouping("parse")
+                .fieldsGrouping("fetch", Constants.StatusStreamName, furl)
+                .fieldsGrouping("sitemap", Constants.StatusStreamName, furl)
+                .fieldsGrouping("feeds", Constants.StatusStreamName, furl)
+                .fieldsGrouping("parse", Constants.StatusStreamName, furl);
 
         return submit("crawl", conf, builder);
     }

@@ -2,6 +2,7 @@ package org.yanislavcore;
 
 import com.codahale.metrics.Counter;
 import com.digitalpebble.stormcrawler.Metadata;
+import com.digitalpebble.stormcrawler.persistence.Status;
 import org.apache.storm.task.OutputCollector;
 import org.apache.storm.task.TopologyContext;
 import org.apache.storm.topology.IRichBolt;
@@ -15,13 +16,12 @@ import org.elasticsearch.action.index.IndexRequest;
 import org.elasticsearch.action.update.UpdateRequest;
 import org.elasticsearch.client.RequestOptions;
 import org.elasticsearch.client.RestHighLevelClient;
-import org.elasticsearch.common.xcontent.XContentFactory;
 import org.elasticsearch.common.xcontent.XContentType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nonnull;
-import java.io.IOException;
+import javax.annotation.Nullable;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.time.LocalDate;
@@ -56,7 +56,12 @@ public class EsIndexer implements IRichBolt {
 
     @Override
     public void execute(Tuple input) {
-        buffer.add(buildRequest(input));
+        //TODO At least once guarantee
+        DocWriteRequest req = buildRequest(input);
+        if (req == null) {
+            return;
+        }
+        buffer.add(req);
         if (tryThreshold()) {
             LOG.info("Starting flush");
             flush();
@@ -83,6 +88,7 @@ public class EsIndexer implements IRichBolt {
                 failedBatchesCounter.inc(indexedPages);
             }
         });
+        lastFlushTimestamp = System.currentTimeMillis();
         buffer.clear();
     }
 
@@ -96,34 +102,49 @@ public class EsIndexer implements IRichBolt {
      * @param input - input tuple.
      * @return IndexRequest
      */
-    @Nonnull
+    @Nullable
     private DocWriteRequest buildRequest(@Nonnull Tuple input) {
         Objects.requireNonNull(input);
         Metadata md = (Metadata) input.getValueByField("metadata");
-        String originUrl = input.getStringByField("url");
-        URL parsedUrl = parseUrl(originUrl);
-        Map<String, Object> urlPart = Map.of(
-                "domain", parsedUrl.getHost(),
-                "https", parsedUrl.getProtocol().equalsIgnoreCase("https"),
-                "path", Objects.requireNonNullElse(parsedUrl.getPath(), ""),
-                "query", Objects.requireNonNullElse(parsedUrl.getQuery(), "")
-        );
         LocalDate today = LocalDate.now();
-        Map<String, Object> seenPart = Map.of(
-                "next", FORMAT.format(today.plusDays(30)),
-                "last", FORMAT.format(today)
-        );
-        Map<String, Object> source = Map.of(
-                "url", urlPart,
-                "seen", seenPart,
-                "title", Objects.requireNonNullElse(md.getFirstValue("parse.title"), ""),
-                "description", Objects.requireNonNullElse(md.getFirstValue("text"), ""),
-                "status", Integer.valueOf(md.getFirstValue("fetch.statusCode"))
-        );
+        String todayFormatted = FORMAT.format(today);
+        if (input.getFields().contains("status") && input.getValueByField("status") == Status.DISCOVERED) {
+            String url = input.getStringByField("url");
+            Map<String, Object> urlPart = createUrlPart(url);
+            Map<String, Object> seenPart = Map.of(
+                    "next", todayFormatted,
+                    "last", todayFormatted,
+                    "first", todayFormatted
+            );
+            Map<String, Object> source = Map.of(
+                    "url", urlPart,
+                    "seen", seenPart
+            );
+            return new IndexRequest(indexName)
+                    .id(url)
+                    .source(source, XContentType.JSON);
+        } else if (md.getFirstValue("fetch.statusCode") == null) {
+            LOG.warn("Unexpected value {}", md);
+            return null;
+        } else {
+            String originUrl = input.getStringByField("url");
+            Map<String, Object> urlPart = createUrlPart(originUrl);
+            Map<String, Object> seenPart = Map.of(
+                    "next", FORMAT.format(today.plusDays(30)),
+                    "last", todayFormatted
+            );
+            Map<String, Object> source = Map.of(
+                    "url", urlPart,
+                    "seen", seenPart,
+                    "title", Objects.requireNonNullElse(md.getFirstValue("parse.title"), ""),
+                    "description", Objects.requireNonNullElse(md.getFirstValue("text"), ""),
+                    "status", Integer.valueOf(md.getFirstValue("fetch.statusCode"))
+            );
 
-        return new IndexRequest(indexName)
-                .id(originUrl + "1")
-                .source(source, XContentType.JSON);
+            //TODO move to constants
+            return new UpdateRequest(indexName, md.getFirstValue("idUrl"))
+                    .doc(source, XContentType.JSON);
+        }
     }
 
     @Override
@@ -140,10 +161,16 @@ public class EsIndexer implements IRichBolt {
     }
 
     @Nonnull
-    private URL parseUrl(@Nonnull String url) {
+    private Map<String, Object> createUrlPart(@Nonnull String url) {
         Objects.requireNonNull(url);
         try {
-            return new URL(url);
+            URL parsedUrl = new URL(url);
+            return Map.of(
+                    "domain", parsedUrl.getHost(),
+                    "https", parsedUrl.getProtocol().equalsIgnoreCase("https"),
+                    "path", Objects.requireNonNullElse(parsedUrl.getPath(), ""),
+                    "query", Objects.requireNonNullElse(parsedUrl.getQuery(), "")
+            );
         } catch (MalformedURLException e) {
             //TODO Mark Doc as invalid in ES
             throw new RuntimeException(e);
