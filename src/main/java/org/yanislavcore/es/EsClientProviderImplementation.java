@@ -1,27 +1,27 @@
-package org.yanislavcore;
+package org.yanislavcore.es;
 
 import clojure.lang.PersistentVector;
 import org.apache.http.HttpHost;
 import org.elasticsearch.client.RestClient;
 import org.elasticsearch.client.RestClientBuilder;
 import org.elasticsearch.client.RestHighLevelClient;
+import org.yanislavcore.components.PagesSpout;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-public class EsClientProvider {
+public class EsClientProviderImplementation implements EsClientProvider{
+    //Creates ONLY one ES client per worker (JVM).
     private static volatile RestHighLevelClient client;
-
-    private EsClientProvider() {
-    }
 
     /**
      * Creates ONLY one ES client per worker (JVM).
      *
      * @param conf - topology config
      */
-    public static RestHighLevelClient initOrGetClient(Map conf) {
+    @Override
+    public RestHighLevelClient initOrGetClient(Map conf) {
         if (client == null) {
             synchronized (PagesSpout.class) {
                 if (client == null) {

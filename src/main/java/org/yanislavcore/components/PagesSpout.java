@@ -1,4 +1,4 @@
-package org.yanislavcore;
+package org.yanislavcore.components;
 
 import com.digitalpebble.stormcrawler.Metadata;
 import org.apache.commons.lang3.tuple.Pair;
@@ -19,6 +19,7 @@ import org.elasticsearch.search.SearchHit;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yanislavcore.es.EsClientProvider;
 
 import javax.annotation.Nullable;
 import java.net.MalformedURLException;
@@ -34,6 +35,7 @@ public class PagesSpout extends BaseRichSpout implements ActionListener<SearchRe
     private static final Logger LOG = LoggerFactory
             .getLogger(PagesSpout.class);
     private final ConcurrentLinkedQueue<Pair<String, String>> queue = new ConcurrentLinkedQueue<>();
+    private final EsClientProvider provider;
     private transient RestHighLevelClient client;
     private int shardID = -1;
     private int maxDocsPerShard;
@@ -42,13 +44,17 @@ public class PagesSpout extends BaseRichSpout implements ActionListener<SearchRe
     private long lastRequestTimestamp = 0;
     private SpoutOutputCollector collector;
 
+    public PagesSpout(EsClientProvider provider) {
+        this.provider = provider;
+    }
+
     @Override
     public void open(Map conf, TopologyContext context, SpoutOutputCollector collector) {
         this.collector = collector;
         indexName = (String) conf.get("pagesIndex");
         maxDocsPerShard = Math.toIntExact((long) conf.get("pagesSpout.maxDocsPerRequestShard"));
         timeoutMillis = (long) conf.get("es.timeoutMillis");
-        client = EsClientProvider.initOrGetClient(conf);
+        client = provider.initOrGetClient(conf);
         initShardId(context);
     }
 

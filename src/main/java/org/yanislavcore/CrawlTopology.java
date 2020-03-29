@@ -20,10 +20,12 @@ package org.yanislavcore;
 import com.digitalpebble.stormcrawler.ConfigurableTopology;
 import com.digitalpebble.stormcrawler.Constants;
 import com.digitalpebble.stormcrawler.bolt.*;
-import com.digitalpebble.stormcrawler.indexing.StdOutIndexer;
-import com.digitalpebble.stormcrawler.persistence.StdOutStatusUpdater;
 import org.apache.storm.topology.TopologyBuilder;
 import org.apache.storm.tuple.Fields;
+import org.yanislavcore.components.EsIndexer;
+import org.yanislavcore.components.PagesSpout;
+import org.yanislavcore.es.EsClientProvider;
+import org.yanislavcore.es.EsClientProviderImplementation;
 
 /**
  * Dummy topology to play with the spouts and bolts
@@ -37,13 +39,14 @@ public class CrawlTopology extends ConfigurableTopology {
     @Override
     protected int run(String[] args) {
         TopologyBuilder builder = new TopologyBuilder();
+        EsClientProvider provider = new EsClientProviderImplementation();
 
-        builder.setSpout("spout", new PagesSpout(), 1);
+        builder.setSpout("spout", new PagesSpout(provider), 1);
 
-        builder.setBolt("partitioner", new URLPartitionerBolt())
+        builder.setBolt("partitioner", new URLPartitionerBolt(), 10)
                 .shuffleGrouping("spout");
 
-        builder.setBolt("fetch", new FetcherBolt(), 100)
+        builder.setBolt("fetch", new FetcherBolt(), 10)
                 .fieldsGrouping("partitioner", new Fields("key"));
 
         builder.setBolt("sitemap", new SiteMapParserBolt(), 10)
@@ -56,7 +59,7 @@ public class CrawlTopology extends ConfigurableTopology {
                 .localOrShuffleGrouping("feeds");
 
         Fields furl = new Fields("url");
-        builder.setBolt("index", new EsIndexer())
+        builder.setBolt("index", new EsIndexer(provider))
                 .localOrShuffleGrouping("parse")
                 .fieldsGrouping("fetch", Constants.StatusStreamName, furl)
                 .fieldsGrouping("sitemap", Constants.StatusStreamName, furl)
@@ -65,4 +68,6 @@ public class CrawlTopology extends ConfigurableTopology {
 
         return submit("crawl", conf, builder);
     }
+
+
 }

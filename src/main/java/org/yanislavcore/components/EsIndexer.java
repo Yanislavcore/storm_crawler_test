@@ -1,4 +1,4 @@
-package org.yanislavcore;
+package org.yanislavcore.components;
 
 import com.codahale.metrics.Counter;
 import com.digitalpebble.stormcrawler.Metadata;
@@ -19,6 +19,8 @@ import org.elasticsearch.client.RestHighLevelClient;
 import org.elasticsearch.common.xcontent.XContentType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yanislavcore.es.EsClientProvider;
+import org.yanislavcore.es.EsClientProviderImplementation;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -35,6 +37,7 @@ public class EsIndexer implements IRichBolt {
     private static final Logger LOG = LoggerFactory.getLogger(EsIndexer.class);
     private static final DateTimeFormatter FORMAT = DateTimeFormatter.ISO_DATE;
     private final List<DocWriteRequest<?>> buffer = new ArrayList<>();
+    private final EsClientProvider provider;
     private transient RestHighLevelClient client;
     private String indexName;
     private int bufferSize;
@@ -43,13 +46,17 @@ public class EsIndexer implements IRichBolt {
     private Counter indexedPagesCounter;
     private Counter failedBatchesCounter;
 
+    public EsIndexer(EsClientProvider provider) {
+        this.provider = provider;
+    }
+
     @Override
     public void prepare(Map stormConf, TopologyContext context, OutputCollector collector) {
         lastFlushTimestamp = System.currentTimeMillis();
         bufferSize = Math.toIntExact((long) stormConf.get("pagesIndexer.indexBufferSize"));
         bufferTimeoutMillis = (long) stormConf.get("pagesIndexer.indexBufferTimeoutMillis");
         indexName = (String) stormConf.get("pagesIndex");
-        client = EsClientProvider.initOrGetClient(stormConf);
+        client = provider.initOrGetClient(stormConf);
         indexedPagesCounter = context.registerCounter("indexedPages");
         failedBatchesCounter = context.registerCounter("failedBatches");
     }
