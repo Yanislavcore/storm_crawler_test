@@ -8,18 +8,15 @@ import org.apache.storm.task.TopologyContext;
 import org.apache.storm.topology.IRichBolt;
 import org.apache.storm.topology.OutputFieldsDeclarer;
 import org.apache.storm.tuple.Tuple;
-import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.DocWriteRequest;
-import org.elasticsearch.action.bulk.BulkRequest;
-import org.elasticsearch.action.bulk.BulkResponse;
 import org.elasticsearch.action.index.IndexRequest;
 import org.elasticsearch.action.update.UpdateRequest;
-import org.elasticsearch.client.RequestOptions;
-import org.elasticsearch.client.RestHighLevelClient;
 import org.elasticsearch.common.xcontent.XContentType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yanislavcore.es.EsClientProvider;
+import org.yanislavcore.es.PagesIndexDao;
+import org.yanislavcore.es.PagesIndexDaoFactory;
+import org.yanislavcore.utils.TimeMachine;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -41,8 +38,9 @@ public class EsIndexer implements IRichBolt {
     private static final Logger LOG = LoggerFactory.getLogger(EsIndexer.class);
     private static final DateTimeFormatter FORMAT = DateTimeFormatter.ISO_DATE;
     private final List<DocWriteRequest<?>> buffer = new ArrayList<>();
-    private final EsClientProvider provider;
-    private transient RestHighLevelClient client;
+    private final PagesIndexDaoFactory provider;
+    private final TimeMachine timeMachine;
+    private transient PagesIndexDao dao;
     private String indexName;
     private int bufferSize;
     private long bufferTimeoutMillis;
@@ -50,17 +48,18 @@ public class EsIndexer implements IRichBolt {
     private Counter indexedPagesCounter;
     private Counter failedBatchesCounter;
 
-    public EsIndexer(EsClientProvider provider) {
+    public EsIndexer(PagesIndexDaoFactory provider, TimeMachine timeMachine) {
         this.provider = provider;
+        this.timeMachine = timeMachine;
     }
 
     @Override
     public void prepare(Map stormConf, TopologyContext context, OutputCollector collector) {
-        lastFlushTimestamp = System.currentTimeMillis();
+        lastFlushTimestamp = timeMachine.epochMillis();
         bufferSize = Math.toIntExact((long) stormConf.get("pagesIndexer.indexBufferSize"));
         bufferTimeoutMillis = (long) stormConf.get("pagesIndexer.indexBufferTimeoutMillis");
         indexName = (String) stormConf.get("pagesIndex");
-        client = provider.initOrGetClient(stormConf);
+        dao = provider.initOrGetClient(stormConf);
         indexedPagesCounter = context.registerCounter("indexedPages");
         failedBatchesCounter = context.registerCounter("failedBatches");
     }
@@ -82,29 +81,22 @@ public class EsIndexer implements IRichBolt {
     }
 
     private void flush() {
-        BulkRequest req = new BulkRequest(indexName)
-                .add(buffer);
-        final int indexedPages = buffer.size();
-        LOG.info("Sending request");
-        client.bulkAsync(req, RequestOptions.DEFAULT, new ActionListener<>() {
-            @Override
-            public void onResponse(BulkResponse bulkItemResponses) {
-                indexedPagesCounter.inc(indexedPages);
-                LOG.info("Successfully indexed {} pages to index {}", indexedPages, indexName);
-            }
-
-            @Override
-            public void onFailure(Exception e) {
-                LOG.error("Failed to index {} pages to index {}. {}", indexedPages, indexName, e);
-                failedBatchesCounter.inc(indexedPages);
+        final int pagesNumber = buffer.size();
+        dao.indexPages(indexName, new ArrayList<>(buffer), (ignored, ex) -> {
+            if (ex != null) {
+                LOG.error("Failed to index pages to index {}. {}", indexName, ex);
+                indexedPagesCounter.inc(pagesNumber);
+            } else {
+                LOG.debug("Successfully indexed {} pages to index {}", pagesNumber, indexName);
+                failedBatchesCounter.inc(pagesNumber);
             }
         });
-        lastFlushTimestamp = System.currentTimeMillis();
+        lastFlushTimestamp = timeMachine.epochMillis();
         buffer.clear();
     }
 
     private boolean tryThreshold() {
-        return buffer.size() >= bufferSize || System.currentTimeMillis() - lastFlushTimestamp >= bufferTimeoutMillis;
+        return buffer.size() >= bufferSize || timeMachine.epochMillis() - lastFlushTimestamp >= bufferTimeoutMillis;
     }
 
     /**
@@ -114,10 +106,11 @@ public class EsIndexer implements IRichBolt {
      * @return IndexRequest
      */
     @Nullable
+    //TODO Move to dao
     private DocWriteRequest buildRequest(@Nonnull Tuple input) {
         Objects.requireNonNull(input);
         Metadata md = (Metadata) input.getValueByField("metadata");
-        LocalDate today = LocalDate.now();
+        LocalDate today = timeMachine.todayUtc();
         String todayFormatted = FORMAT.format(today);
         if (input.getFields().contains("status") && input.getValueByField("status") == Status.DISCOVERED) {
             String url = input.getStringByField("url");

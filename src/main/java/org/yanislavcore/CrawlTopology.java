@@ -7,24 +7,27 @@ import org.apache.storm.topology.TopologyBuilder;
 import org.apache.storm.tuple.Fields;
 import org.yanislavcore.components.EsIndexer;
 import org.yanislavcore.components.PagesSpout;
-import org.yanislavcore.es.EsClientProvider;
-import org.yanislavcore.es.EsClientProviderImplementation;
+import org.yanislavcore.es.PagesIndexDaoFactory;
+import org.yanislavcore.es.RealPagesIndexDaoFactory;
+import org.yanislavcore.utils.RealTimeMachine;
+import org.yanislavcore.utils.TimeMachine;
 
 /**
  * Crawler topology class, builds all components and submits topology.
  */
 public class CrawlTopology extends ConfigurableTopology {
 
-    public static void main(String[] args) throws Exception {
+    public static void main(String[] args) {
         ConfigurableTopology.start(new CrawlTopology(), args);
     }
 
     @Override
     protected int run(String[] args) {
         TopologyBuilder builder = new TopologyBuilder();
-        EsClientProvider provider = new EsClientProviderImplementation();
+        PagesIndexDaoFactory provider = new RealPagesIndexDaoFactory();
+        TimeMachine realTimeMachine = new RealTimeMachine();
 
-        builder.setSpout("spout", new PagesSpout(provider), 1);
+        builder.setSpout("spout", new PagesSpout(provider, realTimeMachine), 1);
 
         builder.setBolt("partitioner", new URLPartitionerBolt(), 10)
                 .shuffleGrouping("spout");
@@ -42,7 +45,7 @@ public class CrawlTopology extends ConfigurableTopology {
                 .localOrShuffleGrouping("feeds");
 
         Fields furl = new Fields("url");
-        builder.setBolt("index", new EsIndexer(provider))
+        builder.setBolt("index", new EsIndexer(provider, realTimeMachine))
                 .localOrShuffleGrouping("parse")
                 .fieldsGrouping("fetch", Constants.StatusStreamName, furl)
                 .fieldsGrouping("sitemap", Constants.StatusStreamName, furl)
