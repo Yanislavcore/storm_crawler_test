@@ -26,7 +26,7 @@ IMHO:
 * StormCrawler project has weak functionality, awful documentation and poorly expandable or configurable. 
 Also, it doesn't look like a well-supported project.
 I wouldn't recommend it to use in real long-running projects.
-* Apache Storm fits for these proposes well, but it's relatively low-level. 
+* Apache Storm fits for these purposes well, but it's relatively low-level. 
 I would carefully consider alternatives like Spark or Flink which provides both low-level and high-level functionality, 
 more popular, have better support and large users and knowledge base.  
 * ElasticSearch doesn't fit like crawling queue storage. It makes it more difficult to parallel queue between 
