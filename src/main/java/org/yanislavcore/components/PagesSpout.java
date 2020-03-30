@@ -30,6 +30,10 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 
 import static org.elasticsearch.index.query.QueryBuilders.boolQuery;
 
+/**
+ * Pages spout.
+ * It collects scheduled for crawling pages from ElasticSearch and emits them to downstream bolts.
+ */
 public class PagesSpout extends BaseRichSpout implements ActionListener<SearchResponse> {
 
     private static final Logger LOG = LoggerFactory

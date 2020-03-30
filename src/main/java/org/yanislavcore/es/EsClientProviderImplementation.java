@@ -11,6 +11,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+
+/**
+ * Inits or returns already inited real Elastic Search client.
+ * Creates only one ES client per worker (JVM).
+ */
 public class EsClientProviderImplementation implements EsClientProvider{
     //Creates ONLY one ES client per worker (JVM).
     private static volatile RestHighLevelClient client;
@@ -18,7 +23,8 @@ public class EsClientProviderImplementation implements EsClientProvider{
     /**
      * Creates ONLY one ES client per worker (JVM).
      *
-     * @param conf - topology config
+     * @param conf - storm topology configuration
+     * @return client
      */
     @Override
     public RestHighLevelClient initOrGetClient(Map conf) {

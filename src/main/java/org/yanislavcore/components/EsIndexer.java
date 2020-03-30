@@ -20,7 +20,6 @@ import org.elasticsearch.common.xcontent.XContentType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yanislavcore.es.EsClientProvider;
-import org.yanislavcore.es.EsClientProviderImplementation;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -33,6 +32,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+
+/**
+ * ElasticSearch indexer.
+ * Handles statuses of crawl process and results of pages crawling.
+ */
 public class EsIndexer implements IRichBolt {
     private static final Logger LOG = LoggerFactory.getLogger(EsIndexer.class);
     private static final DateTimeFormatter FORMAT = DateTimeFormatter.ISO_DATE;
