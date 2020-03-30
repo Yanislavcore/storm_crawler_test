@@ -70,13 +70,15 @@ class EsIndexerTest {
                 new Values("http://test.com/path?query=id", Status.DISCOVERED, new Metadata(new HashMap<>())),
                 param
         );
-        for (int i = 0; i < 5; i++) {
+        for (int j = 1; j <= 5; j++) {
+            for (int i = 0; i < 5; i++) {
+                indexer.execute(t);
+            }
+            verify(daoMock, times(j - 1)).indexPages(anyString(), anyList(), any());
+            when(mockTimeMachine.epochMillis()).thenReturn(start + 10 * j);
             indexer.execute(t);
+            verify(daoMock, times(j)).indexPages(anyString(), anyList(), any());
+            verifyNoMoreInteractions(daoMock);
         }
-        verifyNoInteractions(daoMock);
-        when(mockTimeMachine.epochMillis()).thenReturn(start + 10);
-        indexer.execute(t);
-        verify(daoMock, times(1)).indexPages(anyString(), anyList(), any());
-        verifyNoMoreInteractions(daoMock);
     }
 }
