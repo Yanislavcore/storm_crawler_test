@@ -44,7 +44,7 @@ public class PagesIndexDao {
                 .add(pages);
         final int indexedPages = pages.size();
         LOG.debug("Sending request with {} pages", pages.size());
-        client.bulkAsync(req, RequestOptions.DEFAULT, new ActionListener<>() {
+        client.bulkAsync(req, RequestOptions.DEFAULT, new ActionListener<BulkResponse>() {
             @Override
             public void onResponse(BulkResponse bulkItemResponses) {
                 LOG.debug("Successfully indexed {} pages to index {}", indexedPages, indexName);

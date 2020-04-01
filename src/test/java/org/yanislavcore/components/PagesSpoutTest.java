@@ -1,6 +1,8 @@
 package org.yanislavcore.components;
 
 import com.digitalpebble.stormcrawler.Metadata;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.primitives.Ints;
 import org.apache.storm.spout.SpoutOutputCollector;
 import org.apache.storm.task.TopologyContext;
@@ -49,7 +51,7 @@ class PagesSpoutTest {
         when(mockTimeMachine.epochMillis()).thenReturn(start);
         when(mockTopologyContext.getThisComponentId()).thenReturn("");
         when(mockTopologyContext.getComponentTasks(any())).thenReturn(Ints.asList(1));
-        Map<String, Object> confMap = Map.of(
+        Map<String, Object> confMap = ImmutableMap.of(
                 "pagesIndex", "pages",
                 "pagesSpout.maxDocsPerRequestShard", 123L,
                 "es.timeoutMillis", 321L
@@ -66,7 +68,7 @@ class PagesSpoutTest {
         verify(daoMock, times(1)).searchScheduledUrls(any(), anyInt(), anyInt(), any());
         verifyNoMoreInteractions(daoMock);
         String testUrlString = "https://domain.com/path?query";
-        listener.accept(List.of(new PageUrlData(testUrlString, testUrlString + "=id")), null);
+        listener.accept(ImmutableList.of(new PageUrlData(testUrlString, testUrlString + "=id")), null);
         verifyNoInteractions(mockCollector);
 
         spout.nextTuple();

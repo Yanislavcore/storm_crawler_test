@@ -3,6 +3,7 @@ package org.yanislavcore.components;
 import com.codahale.metrics.Counter;
 import com.digitalpebble.stormcrawler.Metadata;
 import com.digitalpebble.stormcrawler.persistence.Status;
+import com.google.common.collect.ImmutableMap;
 import org.apache.storm.Testing;
 import org.apache.storm.task.TopologyContext;
 import org.apache.storm.testing.MkTupleParam;
@@ -36,7 +37,7 @@ class EsIndexerTest {
         when(mockTimeMachine.epochMillis()).thenReturn(start);
         when(mockTimeMachine.todayUtc()).thenReturn(startDate);
         indexer = new EsIndexer((conf) -> daoMock, mockTimeMachine);
-        Map<String, Object> conf = Map.of(
+        Map<String, Object> conf = ImmutableMap.of(
                 "pagesIndexer.indexBufferSize", 10L,
                 "pagesIndexer.indexBufferTimeoutMillis", 10L,
                 "pagesIndex", "pages"

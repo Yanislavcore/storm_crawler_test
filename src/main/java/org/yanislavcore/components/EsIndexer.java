@@ -3,6 +3,7 @@ package org.yanislavcore.components;
 import com.codahale.metrics.Counter;
 import com.digitalpebble.stormcrawler.Metadata;
 import com.digitalpebble.stormcrawler.persistence.Status;
+import com.google.common.collect.ImmutableMap;
 import org.apache.storm.task.OutputCollector;
 import org.apache.storm.task.TopologyContext;
 import org.apache.storm.topology.IRichBolt;
@@ -115,12 +116,12 @@ public class EsIndexer implements IRichBolt {
         if (input.getFields().contains("status") && input.getValueByField("status") == Status.DISCOVERED) {
             String url = input.getStringByField("url");
             Map<String, Object> urlPart = createUrlPart(url);
-            Map<String, Object> seenPart = Map.of(
+            Map<String, Object> seenPart = ImmutableMap.of(
                     "next", todayFormatted,
                     "last", todayFormatted,
                     "first", todayFormatted
             );
-            Map<String, Object> source = Map.of(
+            Map<String, Object> source = ImmutableMap.of(
                     "url", urlPart,
                     "seen", seenPart
             );
@@ -133,15 +134,15 @@ public class EsIndexer implements IRichBolt {
         } else {
             String originUrl = input.getStringByField("url");
             Map<String, Object> urlPart = createUrlPart(originUrl);
-            Map<String, Object> seenPart = Map.of(
+            Map<String, Object> seenPart = ImmutableMap.of(
                     "next", FORMAT.format(today.plusDays(30)),
                     "last", todayFormatted
             );
-            Map<String, Object> source = Map.of(
+            Map<String, Object> source = ImmutableMap.of(
                     "url", urlPart,
                     "seen", seenPart,
-                    "title", Objects.requireNonNullElse(md.getFirstValue("parse.title"), ""),
-                    "description", Objects.requireNonNullElse(md.getFirstValue("text"), ""),
+                    "title", md.getFirstValue("parse.title") != null ? md.getFirstValue("parse.title") : "",
+                    "description", md.getFirstValue("text") != null ? md.getFirstValue("text") : "",
                     "status", Integer.valueOf(md.getFirstValue("fetch.statusCode"))
             );
 
@@ -169,11 +170,11 @@ public class EsIndexer implements IRichBolt {
         Objects.requireNonNull(url);
         try {
             URL parsedUrl = new URL(url);
-            return Map.of(
+            return ImmutableMap.of(
                     "domain", parsedUrl.getHost(),
                     "https", parsedUrl.getProtocol().equalsIgnoreCase("https"),
-                    "path", Objects.requireNonNullElse(parsedUrl.getPath(), ""),
-                    "query", Objects.requireNonNullElse(parsedUrl.getQuery(), "")
+                    "path", parsedUrl.getPath() != null ? parsedUrl.getPath() : "",
+                    "query", parsedUrl.getQuery() != null ? parsedUrl.getQuery() : ""
             );
         } catch (MalformedURLException e) {
             //TODO Mark Doc as invalid in ES
